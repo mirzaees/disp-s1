@@ -13,7 +13,7 @@ import os
 import subprocess
 import sys
 from dataclasses import astuple, dataclass
-from itertools import dropwhile
+from itertools import dropwhile, takewhile
 from pathlib import Path
 from typing import Any, Iterator, Optional, TextIO
 
@@ -36,6 +36,10 @@ class CommandNotFoundError(Exception):
 
 class YumListIsAnnoyingError(Exception):
     """Raised when 'yum list' does something annoying."""
+
+
+class PipListIsAnnoyingError(Exception):
+    """Raised when 'pip list' does something annoying."""
 
 
 def check_command(cmd: str) -> bool:
@@ -91,6 +95,58 @@ def list_conda_packages(env: str = "base") -> list[Package]:
 
     # Convert to `Package` objects.
     packages = map(as_package, package_list)
+
+    # Sort alphabetically by name.
+    return sorted(packages, key=lambda package: package.name)
+
+
+def list_pip_packages() -> list[Package]:
+    """List system packages installed with pip."""
+    # Check if 'pip' is available.
+    if not check_command("pip"):
+        errmsg = "'pip' command not found"
+        raise CommandNotFoundError(errmsg)
+
+    # Get the list of pip packages.
+    args = ["pip", "list", "--format=freeze"]
+    res = subprocess.run(args, capture_output=True, check=True, text=True)
+
+    # Split the output into a sequence of lines.
+    # Skip past the first few lines until we get to the actual list of packages.
+    lines = res.stdout.splitlines()
+    package_list = takewhile(lambda line: line != "Installed Packages", lines)
+    # import pdb; pdb.set_trace()
+    try:
+        next(package_list)  # type: ignore[call-overload]
+    except StopIteration:
+        cmd = subprocess.list2cmdline(args)
+        errmsg = f"unexpected output from {cmd!r}"
+        raise RuntimeError(errmsg)
+
+    def as_package(line: str) -> Package:
+        try:
+            name, version = line.split("==")
+        except ValueError as exc:
+            raise PipListIsAnnoyingError from exc
+
+        channel = ""
+
+        return Package(name, version, "pip", channel)
+
+    def parse_lines(lines: Iterator[str]) -> Iterator[Package]:
+        for line in lines:
+            # Sometimes package info in the output is inexplicably broken up
+            # across two lines...
+            try:
+                package = as_package(line)
+            except PipListIsAnnoyingError:
+                line += next(lines)
+                package = as_package(line)
+
+            yield package
+
+    # Parse each line as a `Package` object.
+    packages = parse_lines(package_list)
 
     # Sort alphabetically by name.
     return sorted(packages, key=lambda package: package.name)
@@ -154,11 +210,12 @@ def list_yum_packages() -> list[Package]:
 
 def list_packages() -> list[Package]:
     """List installed packages."""
-    return list_conda_packages() + list_yum_packages()
+    return list_conda_packages() + list_yum_packages() + list_pip_packages()
 
 
 def write_package_csv(csvfile: TextIO = sys.stdout) -> None:
     """Write a list of installed packages to file in CSV format."""
+    # import pdb; pdb.set_trace()
     packages = list_packages()
     csvwriter = csv.writer(csvfile)
     csvwriter.writerow(["Name", "Version", "Package Manager", "Channel"])
