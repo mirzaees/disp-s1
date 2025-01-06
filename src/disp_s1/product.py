@@ -1154,14 +1154,15 @@ def _create_dataset(
     elif np.array(data).size <= 1:
         # Scalars don't need chunks/compression
         options = {}
-    dset = group.create_variable(
-        name,
-        dimensions=dimensions,
-        data=data,
-        dtype=dtype,
-        fillvalue=fillvalue,
-        **options,
-    )
+    if name not in group.variables:
+        dset = group.create_variable(
+            name,
+            dimensions=dimensions,
+            data=data,
+            dtype=dtype,
+            fillvalue=fillvalue,
+            **options,
+        )
     dset.attrs.update(attrs)
     return dset
 
