@@ -172,6 +172,12 @@ def parse_cslc_date(filename: Path | str) -> str:
         r"(?P<burst_id>[Tt]\d{3}[-_]\d{6}[-_][Ii][Ww]\d)[-_]"
         r"(?P<acquisition_ts>\d{8}(T\d{6}Z)?)_.*"
     )
+    pattern = (
+        r"OPERA_L2_(COMPRESSED-)?CSLC-S1_"
+        r"([A-Z0-9]+_)??"  # <--- Add this line to skip/capture the 'F33039_'
+        r"(?P<burst_id>[Tt]\d{3}[-_]\d{6}[-_][Ii][Ww]\d)[-_]"
+        r"(?P<acquisition_ts>\d{8}(T\d{6}Z)?)_.*"
+    )
 
     match = re.match(pattern, cslc_name)
     if not match:
